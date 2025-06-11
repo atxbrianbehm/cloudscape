@@ -1,0 +1,69 @@
+.sidebar {
+  width: 260px;
+  background: #232323;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 12px;
+  gap: 18px;
+  border-right: 2px solid #333;
+  min-height: 100vh;
+}
+.section {
+  margin-bottom: 22px;
+}
+.scene-buttons button {
+  margin-right: 10px;
+  background: #232323;
+  color: #4fc3f7;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.scene-buttons button:hover,
+.scene-buttons button:focus {
+  background: #333;
+  outline: 2px solid #4fc3f7;
+}
+.layers-list {
+  background: #292929;
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 40px;
+}
+.layer-item {
+  transition: background 0.15s, color 0.15s;
+}
+.layer-item:hover,
+.layer-item:focus {
+  background: #333;
+  outline: 2px solid #4fc3f7;
+}
+.layer-item[aria-selected="true"] {
+  background: #222;
+  color: #4fc3f7;
+  font-weight: bold;
+}
+.asset-palette {
+  background: #292929;
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 40px;
+}
+.asset-palette button {
+  background: #232323;
+  color: #fff;
+  border: 1px solid #4fc3f7;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.asset-palette button:hover,
+.asset-palette button:focus {
+  background: #4fc3f7;
+  color: #181818;
+  outline: 2px solid #4fc3f7;
+}

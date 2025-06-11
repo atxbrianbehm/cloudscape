@@ -1,0 +1,39 @@
+.timeline-root {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #181818;
+  padding: 8px 16px;
+  border-radius: 6px;
+}
+.timeline-label {
+  color: #4fc3f7;
+  font-weight: bold;
+}
+.timeline-slider {
+  flex: 1;
+  margin-left: 12px;
+  accent-color: #4fc3f7;
+  height: 6px;
+  border-radius: 4px;
+  outline: none;
+  transition: box-shadow 0.15s;
+}
+.timeline-slider:focus {
+  box-shadow: 0 0 0 2px #4fc3f7;
+  height: 10px;
+}
+.timeline-root button {
+  background: #232323;
+  color: #4fc3f7;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.timeline-root button:hover,
+.timeline-root button:focus {
+  background: #333;
+  outline: 2px solid #4fc3f7;
+}
