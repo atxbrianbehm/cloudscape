@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, memo } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import CameraControls from 'camera-controls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -29,9 +29,9 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ 
-          padding: '20px', 
-          background: '#f8d7da', 
+        <div style={{
+          padding: '20px',
+          background: '#f8d7da',
           color: '#721c24',
           border: '1px solid #f5c6cb',
           borderRadius: '4px',
@@ -43,7 +43,7 @@ class ErrorBoundary extends React.Component {
             <summary>Error details</summary>
             <pre>{this.state.error?.toString()}</pre>
           </details>
-          <button 
+          <button
             onClick={() => {
               this.setState({ hasError: false, error: null });
               window.location.reload();
@@ -71,8 +71,8 @@ const Grid = ({ visible = true, size = 10, divisions = 10, color = "#666666" }) 
   const gridHelper = new THREE.GridHelper(size, divisions, color, color);
   gridHelper.position.y = -0.01; // Slightly below objects to prevent z-fighting
   return (
-    <primitive 
-      object={gridHelper} 
+    <primitive
+      object={gridHelper}
       visible={visible}
       receiveShadow
     />
@@ -82,13 +82,25 @@ const Grid = ({ visible = true, size = 10, divisions = 10, color = "#666666" }) 
 // Selection indicator component
 const SelectionOutline = ({ object, visible }) => {
   const ref = useRef();
-  
+
   useFrame(() => {
     if (ref.current && object) {
       // Match the position and rotation of the target object
       ref.current.position.copy(object.position);
       ref.current.rotation.copy(object.rotation);
-      ref.current.scale.set(1.1, 1.1, 1.1);
+
+      // Calculate bounding box of the object
+      const boundingBox = new THREE.Box3().setFromObject(object);
+      const size = new THREE.Vector3();
+      boundingBox.getSize(size);
+
+      // Scale slightly larger than the object's actual size
+      const scaleFactor = 1.05;
+      ref.current.scale.set(
+        size.x * scaleFactor,
+        size.y * scaleFactor,
+        size.z * scaleFactor
+      );
     }
   });
 
@@ -97,10 +109,10 @@ const SelectionOutline = ({ object, visible }) => {
   return (
     <mesh ref={ref} visible={visible}>
       <boxGeometry args={[1, 1, 1]} />
-      <meshBasicMaterial 
-        color="#00ff00" 
-        wireframe 
-        transparent 
+      <meshBasicMaterial
+        color="#00ff00"
+        wireframe
+        transparent
         opacity={0.8}
       />
     </mesh>
@@ -111,21 +123,26 @@ const SelectionOutline = ({ object, visible }) => {
 const ObjectTransformControls = ({ mode, object, enabled }) => {
   const { camera, gl } = useThree();
   const transformRef = useRef();
-  
+
   useEffect(() => {
     if (transformRef.current) {
       transformRef.current.setMode(mode.toLowerCase());
     }
   }, [mode]);
 
+  useEffect(() => {
+    if (transformRef.current && object) {
+      transformRef.current.attach(object);
+    }
+  }, [object]);
+
   if (!object) return null;
 
   return (
-    <TransformControls
+    <primitive
       ref={transformRef}
-      object={object}
+      object={new TransformControls(camera, gl.domElement)}
       enabled={enabled}
-      camera={camera}
       mode={mode.toLowerCase()}
     />
   );
@@ -136,29 +153,39 @@ const SelectionManager = ({ toolMode, onSelect }) => {
   const { camera, scene, gl } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
   const pointer = useRef(new THREE.Vector2());
-  
+
+  const findSelectableObject = (object) => {
+    if (object.userData && object.userData.objectId !== undefined && object.userData.objectId !== null) {
+      return object;
+    }
+
+    if (object.parent) {
+      return findSelectableObject(object.parent);
+    }
+
+    return null;
+  };
+
   const handleCanvasClick = useCallback((event) => {
     if (toolMode !== 'Select') return;
-    
+
     // Calculate pointer position in normalized device coordinates
     const rect = gl.domElement.getBoundingClientRect();
     pointer.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
+
     // Update the raycaster with the new pointer position
     raycaster.current.setFromCamera(pointer.current, camera);
-    
+
     // Calculate objects intersecting the picking ray
     const intersects = raycaster.current.intersectObjects(scene.children, true);
-    
+
     if (intersects.length > 0) {
-      // Find the first object with userData.objectId
-      const clickedObject = intersects.find(
-        (item) => item.object.userData.objectId
-      );
-      
-      if (clickedObject) {
-        onSelect(clickedObject.object.userData.objectId);
+      // Process the first intersection
+      const selectableObject = findSelectableObject(intersects[0].object);
+
+      if (selectableObject) {
+        onSelect(selectableObject.userData.objectId);
       } else {
         onSelect(null);
       }
@@ -166,23 +193,71 @@ const SelectionManager = ({ toolMode, onSelect }) => {
       onSelect(null);
     }
   }, [camera, gl.domElement, onSelect, scene.children, toolMode]);
-  
+
   useEffect(() => {
     const canvas = gl.domElement;
     canvas.addEventListener('click', handleCanvasClick);
-    
+
     return () => {
       canvas.removeEventListener('click', handleCanvasClick);
     };
   }, [gl.domElement, handleCanvasClick]);
-  
+
   return null;
 };
 
+// Individual 3D object component
+const SceneObject = memo(function SceneObject({
+  obj,
+  index,
+  remountKey,
+  isSelected,
+  toolMode,
+  viewMode,
+  baseY
+}) {
+  const objRef = useRef();
+  const objPosition = obj.position || [-2 + index * 1.5, baseY, 0];
+
+  return (
+    <group
+      key={`asset-group-${obj.id || index}-${remountKey}`}
+      userData={{ objectId: obj.id }}
+      position={objPosition}
+    >
+      <mesh
+        key={`asset-${obj.id || index}-${remountKey}`}
+        ref={objRef}
+        userData={{ objectId: obj.id }}
+        scale={obj.scale || [1, 1, 1]}
+        rotation={obj.rotation || [0, 0, 0]}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial
+          color={isSelected ? "#ff0000" : "#666666"}
+          wireframe={viewMode === 'Wireframe'}
+        />
+      </mesh>
+
+      {isSelected && objRef.current && (
+        <>
+          <SelectionOutline object={objRef.current} visible={isSelected && toolMode === "Select"} />
+          <ObjectTransformControls
+            mode={toolMode}
+            object={objRef.current}
+            enabled={isSelected && toolMode !== "Select"}
+          />
+        </>
+      )}
+    </group>
+  );
+});
+
+
 // Main ThreeCanvas component
-const ThreeCanvas = memo(function ThreeCanvas({ 
-  objects, 
-  viewMode = "3D", 
+const ThreeCanvas = memo(function ThreeCanvas({
+  objects,
+  viewMode = "3D",
   toolMode = "Select",
   showGrid = true,
 }) {
@@ -193,17 +268,17 @@ const ThreeCanvas = memo(function ThreeCanvas({
   const [errorMsg, setErrorMsg] = useState(null);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [remountKey, setRemountKey] = useState(Date.now());
-  
+
   // Refs for cleanup and state management
   const rendererRef = useRef(null);
   const cleanupQueue = useRef([]);
   const isMounted = useRef(true);
-  
+
   // Clean up WebGL context and resources on unmount
   useEffect(() => {
     return () => {
       isMounted.current = false;
-      
+
       // Execute all cleanup functions in reverse order
       while (cleanupQueue.current.length > 0) {
         const cleanupFn = cleanupQueue.current.pop();
@@ -215,7 +290,7 @@ const ThreeCanvas = memo(function ThreeCanvas({
           }
         }
       }
-      
+
       // Clean up renderer if it exists
       if (rendererRef.current) {
         const renderer = rendererRef.current;
@@ -223,14 +298,14 @@ const ThreeCanvas = memo(function ThreeCanvas({
           // Get WebGL context
           const canvas = renderer.domElement;
           const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-          
+
           // Clear renderer resources
           renderer.clear();
           renderer.forceContextLoss();
-          
+
           // Clear render targets and materials
           renderer.dispose();
-          
+
           // Force WebGL context loss
           if (gl) {
             try {
@@ -238,12 +313,12 @@ const ThreeCanvas = memo(function ThreeCanvas({
               if (loseContext) {
                 loseContext.loseContext();
               }
-              
+
               const internalExtension = gl.getExtension('WEBGL_lose_context_INTERNAL');
               if (internalExtension) {
                 internalExtension.loseContext();
               }
-              
+
               // Clear WebGL state
               gl.getError(); // Clear any existing errors
               gl.finish(); // Wait for all commands to complete
@@ -251,7 +326,7 @@ const ThreeCanvas = memo(function ThreeCanvas({
               console.warn('Error during WebGL context cleanup:', e);
             }
           }
-          
+
           // Remove canvas from DOM
           if (canvas.parentNode) {
             try {
@@ -260,33 +335,33 @@ const ThreeCanvas = memo(function ThreeCanvas({
               console.warn('Error removing canvas from DOM:', e);
             }
           }
-          
+
           // Clear references
           rendererRef.current = null;
-          
+
           // Force garbage collection if available
           if (window.gc) {
             window.gc();
           }
-          
+
           console.log('WebGL renderer and context cleaned up successfully');
-          
+
         } catch (e) {
           console.error('Error during WebGL cleanup:', e);
         }
       }
     };
   }, []);
-  
+
   // Handle canvas mount success
   const handleCreated = useCallback(({ gl, scene, camera }) => {
     if (!isMounted.current) return;
-    
+
     console.log("Canvas mounted successfully");
-    
+
     // Store the renderer reference for cleanup
     rendererRef.current = gl;
-    
+
     try {
       // Configure renderer with more aggressive cleanup settings
       gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -297,49 +372,49 @@ const ThreeCanvas = memo(function ThreeCanvas({
       gl.autoClearDepth = true;
       gl.autoClearStencil = true;
       gl.setClearColor(0x000000, 0);
-      
+
       // Disable renderer features we don't need
       gl.info.autoReset = false;
       gl.xr.enabled = false;
-      
+
       // Set initial size
       const updateSize = () => {
         if (canvasContainerRef.current) {
           const { width, height } = canvasContainerRef.current.getBoundingClientRect();
           gl.setSize(width, height, false);
-          
+
           // Update camera if it exists
           if (camera) {
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
           }
-          
+
           // Force a render to update the viewport
           gl.setViewport(0, 0, width, height);
           gl.render(scene, camera);
         }
       };
-      
+
       // Initial size update
       updateSize();
-      
+
       // Handle window resize with debounce
       let resizeTimeout;
       const handleResize = () => {
         if (resizeTimeout) {
           clearTimeout(resizeTimeout);
         }
-        
+
         resizeTimeout = setTimeout(() => {
           if (isMounted.current) {
             updateSize();
           }
         }, 100);
       };
-      
+
       // Add event listeners
       window.addEventListener('resize', handleResize, { passive: true });
-      
+
       // Add cleanup to queue
       cleanupQueue.current.push(() => {
         window.removeEventListener('resize', handleResize);
@@ -347,34 +422,34 @@ const ThreeCanvas = memo(function ThreeCanvas({
           clearTimeout(resizeTimeout);
         }
       });
-      
+
       // Mark as loaded
       setHasLoaded(true);
-      
+
       console.log('Three.js renderer initialized successfully');
-      
+
     } catch (error) {
       console.error('Error initializing Three.js renderer:', error);
       setErrorMsg('Failed to initialize 3D renderer. Please try refreshing the page.');
     }
-    
+
     // Cleanup function
     return () => {
       // Cleanup is handled by the main effect
     };
   }, []);
-  
+
   // Handle errors
   const handleError = useCallback((e) => {
     console.error("Canvas error:", e);
     setErrorMsg(e.message || "An error occurred while loading the 3D canvas.");
   }, []);
-  
+
   // Handle object selection
   const handleSelectObject = useCallback((objectId) => {
     dispatch({ type: 'SET_SELECTED_OBJECT', payload: objectId });
   }, [dispatch]);
-  
+
   // Reset canvas if errors occur
   useEffect(() => {
     if (errorMsg) {
@@ -385,52 +460,52 @@ const ThreeCanvas = memo(function ThreeCanvas({
       return () => clearTimeout(timer);
     }
   }, [errorMsg]);
-  
+
   // Spread objects horizontally for demo
   const baseY = 0.75;
-  
+
   return (
     <ErrorBoundary>
-      <div 
+      <div
         ref={canvasContainerRef}
         id={canvasId.current}
-        style={{ 
-          position: 'relative', 
-          width: '100%', 
+        style={{
+          position: 'relative',
+          width: '100%',
           height: '100%',
           overflow: 'hidden'
         }}
       >
         {errorMsg && (
-          <div style={{ 
-            position: 'absolute', 
-            top: 0, 
-            left: 0, 
-            zIndex: 10, 
-            background: 'rgba(255,0,0,0.8)', 
-            color: 'white', 
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 10,
+            background: 'rgba(255,0,0,0.8)',
+            color: 'white',
             padding: '10px',
             maxWidth: '100%'
           }}>
             Error: {errorMsg}
           </div>
         )}
-        
+
         {!hasLoaded && (
-          <div style={{ 
-            position: 'absolute', 
-            top: 0, 
-            left: 0, 
-            zIndex: 10, 
-            background: 'rgba(0,0,255,0.8)', 
-            color: 'white', 
-            padding: '10px' 
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 10,
+            background: 'rgba(0,0,255,0.8)',
+            color: 'white',
+            padding: '10px'
           }}>
             Loading canvas...
           </div>
         )}
-        
-        <Canvas 
+
+        <Canvas
           key={`canvas-${remountKey}`}
           camera={{ position: [5, 5, 5], fov: 50, near: 0.1, far: 1000 }}
           style={{ width: "100%", height: "100%", touchAction: 'none' }}
@@ -454,21 +529,21 @@ const ThreeCanvas = memo(function ThreeCanvas({
           <ambientLight intensity={0.6} />
           <directionalLight position={[3, 5, 2]} intensity={0.7} castShadow />
           <ambientLight intensity={0.6} />
-          <directionalLight 
-            position={[5, 5, 5]} 
-            intensity={1} 
-            castShadow 
+          <directionalLight
+            position={[5, 5, 5]}
+            intensity={1}
+            castShadow
             shadow-mapSize-width={2048}
             shadow-mapSize-height={2048}
           />
           <Grid visible={showGrid} />
-          
+
           {/* Floor plane for better shadows */}
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
             <planeGeometry args={[10, 10]} />
             <meshStandardMaterial color="#f0f0f0" />
           </mesh>
-          
+
           <group>
             {/* Default cube if no objects */}
             {(!objects || objects.length === 0) ? (
@@ -477,40 +552,18 @@ const ThreeCanvas = memo(function ThreeCanvas({
                 <meshStandardMaterial color="#4a86e8" />
               </mesh>
             ) : (
-              objects.map((obj, i) => {
-                const isSelected = obj.id === selectedObjectId;
-                const objPosition = obj.position || [-2 + i * 1.5, baseY, 0];
-
-                return (
-                  <group 
-                    key={`asset-group-${obj.id || i}-${remountKey}`}
-                    userData={{ objectId: obj.id }}
-                  >
-                    <mesh
-                      key={`asset-${obj.id || i}-${remountKey}`}
-                      position={objPosition}
-                      onClick={() => handleSelectObject(obj.id)}
-                    >
-                      <boxGeometry args={[1, 1, 1]} />
-                      <meshStandardMaterial 
-                        color={isSelected ? "#ff0000" : "#666666"} 
-                        wireframe={viewMode === 'Wireframe'}
-                      />
-                    </mesh>
-
-                    {isSelected && (
-                      <>
-                        <SelectionOutline object={obj} visible={isSelected && toolMode === "Select"} />
-                        <ObjectTransformControls 
-                          mode={toolMode} 
-                          object={obj} 
-                          enabled={isSelected && toolMode !== "Select"}
-                        />
-                      </>
-                    )}
-                  </group>
-                );
-              })
+              objects.map((obj, i) => (
+                <SceneObject
+                  key={`scene-object-${obj.id || i}-${remountKey}`}
+                  obj={obj}
+                  index={i}
+                  remountKey={remountKey}
+                  isSelected={obj.id === selectedObjectId}
+                  toolMode={toolMode}
+                  viewMode={viewMode}
+                  baseY={baseY}
+                />
+              ))
             )}
           </group>
         </Canvas>
