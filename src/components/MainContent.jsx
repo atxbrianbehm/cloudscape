@@ -1,6 +1,9 @@
 import React from "react";
 import "./MainContent.css";
 import { useCloudStage } from "../context/CloudStageContext";
+import ThreeCanvas from "./ThreeCanvas";
+import Timeline from "./Timeline";
+import ExportPanel from "./ExportPanel";
 
 export default function MainContent() {
   const { state } = useCloudStage();
@@ -37,5 +40,4 @@ export default function MainContent() {
     </main>
   );
 }
-
 
