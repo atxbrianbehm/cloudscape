@@ -262,7 +262,7 @@ const CustomCameraControls = memo(({ viewMode, toolActive }) => {
       
       // Handle specific navigation keys
       switch (event.code) {
-        case 'Home':
+        case 'Home': {
           event.preventDefault();
           const target = cameraPositions.current[viewMode];
           controlsRef.current.setLookAt(
@@ -271,6 +271,7 @@ const CustomCameraControls = memo(({ viewMode, toolActive }) => {
             true
           );
           break;
+        }
         case 'PageUp':
           event.preventDefault();
           camera.position.y += 0.5;
