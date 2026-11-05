@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, memo } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import CameraControls from 'camera-controls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -109,7 +109,7 @@ const SelectionOutline = ({ object, visible }) => {
 
 // TransformControls wrapper for manipulating objects
 const ObjectTransformControls = ({ mode, object, enabled }) => {
-  const { camera, gl } = useThree();
+  const { camera } = useThree();
   const transformRef = useRef();
   
   useEffect(() => {
