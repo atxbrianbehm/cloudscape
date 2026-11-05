@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Clacky-specific configuration
+.1024*
+!.1024
+.breakpoints
